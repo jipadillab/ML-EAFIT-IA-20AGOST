@@ -3,27 +3,24 @@ import pandas as pd
 import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.naive_bayes import GaussianNB
-from sklearn.svm import SVC # Nuevo modelo: Support Vector Classifier
-from sklearn.linear_model import LogisticRegression # Nuevo modelo: Regresión Logística
 from sklearn.metrics import accuracy_score, classification_report, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 # --- Configuración de la página de Streamlit ---
 st.set_page_config(
-    page_title="Simulación de ML Supervisado Interactivo",
-    page_icon="🧠",
+    page_title="Análisis Interactivo de Árboles de Decisión",
+    page_icon="🌳",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("Aplicación Interactiva de Modelos de ML Supervisados 🚀")
+st.title("Análisis Interactivo de Árboles de Decisión 🌳")
 st.markdown("""
 Esta aplicación te permite generar un conjunto de datos simulado, realizar un análisis exploratorio,
-entrenar varios modelos de clasificación supervisada y comparar sus rendimientos.
+**entrenar un modelo de Árbol de Decisión con parámetros personalizables**, visualizar el árbol resultante
+y evaluar su desempeño en tareas de clasificación.
 """)
 
 # --- Controles de Generación de Datos en el Sidebar ---
@@ -42,7 +39,7 @@ def generate_simulated_data(n_samples, n_features, n_classes, random_state):
     X, y = make_classification(
         n_samples=n_samples,
         n_features=n_features,
-        n_informative=min(n_features, n_features - 1), # Asegura al menos una característica informativa
+        n_informative=min(n_features, n_features - 1),
         n_redundant=max(0, n_features - min(n_features, n_features - 1) - 1),
         n_repeated=0,
         n_classes=n_classes,
@@ -84,7 +81,7 @@ st.markdown("#### Distribución de Características")
 selected_features_for_hist = st.multiselect(
     "Selecciona características para ver su distribución:",
     options=df.columns[:-1].tolist(),
-    default=df.columns[0:min(3, df.shape[1]-1)].tolist() # Selecciona las primeras 3 por defecto
+    default=df.columns[0:min(3, df.shape[1]-1)].tolist()
 )
 if selected_features_for_hist:
     for feature in selected_features_for_hist:
@@ -113,100 +110,90 @@ plt.xlabel(df.columns[0])
 plt.ylabel(df.columns[1])
 st.pyplot(fig_scatter)
 
-
-# --- Selección de Modelo y Parámetros ---
+# --- Configuración del Modelo de Árbol de Decisión ---
 st.markdown("---")
-st.subheader("3. Selección y Entrenamiento de Modelos 🤖")
+st.subheader("3. Configuración y Entrenamiento del Árbol de Decisión 🛠️")
 
-st.sidebar.header("Configuración de Modelos ML")
-model_choices = st.sidebar.multiselect(
-    "Selecciona 1 a 5 Modelos de Clasificación:",
-    ["K-Nearest Neighbors (KNN)", "Árbol de Decisión", "Clasificador Bayesiano Gausiano", "Support Vector Machine (SVM)", "Regresión Logística"],
-    default=["K-Nearest Neighbors (KNN)", "Árbol de Decisión"] # Modelos por defecto
+st.sidebar.header("Parámetros del Árbol de Decisión")
+# Parámetros básicos
+max_depth = st.sidebar.slider("Profundidad Máxima (max_depth)", min_value=1, max_value=20, value=7, help="La profundidad máxima del árbol. Limitar esto previene el sobreajuste.")
+min_samples_leaf = st.sidebar.slider("Mínimo de Muestras por Hoja (min_samples_leaf)", min_value=1, max_value=20, value=5, help="El número mínimo de muestras requeridas para estar en un nodo hoja. Un valor más alto previene el sobreajuste.")
+min_samples_split = st.sidebar.slider("Mínimo de Muestras para Dividir (min_samples_split)", min_value=2, max_value=40, value=10, help="El número mínimo de muestras requeridas para dividir un nodo interno.")
+
+# Parámetros avanzados
+criterion = st.sidebar.selectbox(
+    "Criterio de División (criterion)",
+    ("gini", "entropy", "log_loss"),
+    index=0, # gini es el predeterminado
+    help="La función para medir la calidad de una división. 'gini' para impureza Gini, 'entropy' para ganancia de información, 'log_loss' para pérdida de logaritmo."
+)
+splitter = st.sidebar.selectbox(
+    "Estrategia de División (splitter)",
+    ("best", "random"),
+    index=0, # best es el predeterminado
+    help="La estrategia utilizada para elegir la división en cada nodo. 'best' selecciona la mejor división, 'random' selecciona la mejor división aleatoria."
+)
+# Nota: make_classification genera datos con características continuas, por lo que min_impurity_decrease no es directamente aplicable
+# y max_features podría limitar demasiado para un número bajo de características.
+# Estos podrían ser agregados si se desea mayor complejidad.
+
+st.info("Modelo seleccionado: **Árbol de Decisión**")
+
+# --- Entrenamiento del Modelo ---
+model = DecisionTreeClassifier(
+    max_depth=max_depth,
+    min_samples_leaf=min_samples_leaf,
+    min_samples_split=min_samples_split,
+    criterion=criterion,
+    splitter=splitter,
+    random_state=42 # Para reproducibilidad
 )
 
-models = {}
-metrics_results = []
+st.write("Entrenando el Árbol de Decisión con los parámetros seleccionados...")
+try:
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
 
-for model_name in model_choices:
-    st.markdown(f"#### Parámetros para: {model_name}")
-    model = None
+    # --- Resultados del Modelo ---
+    st.markdown("---")
+    st.subheader("4. Resultados y Desempeño del Árbol de Decisión ✅")
 
-    if model_name == "K-Nearest Neighbors (KNN)":
-        n_neighbors = st.sidebar.slider(f"KNN: Número de Vecinos (k) para {model_name}", min_value=1, max_value=20, value=5, key=f"{model_name}_k")
-        model = KNeighborsClassifier(n_neighbors=n_neighbors)
-    elif model_name == "Árbol de Decisión":
-        max_depth = st.sidebar.slider(f"Árbol: Profundidad Máxima para {model_name}", min_value=3, max_value=15, value=7, key=f"{model_name}_depth")
-        min_samples_leaf = st.sidebar.slider(f"Árbol: Mínimo de Muestras por Hoja para {model_name}", min_value=1, max_value=10, value=3, key=f"{model_name}_leaf")
-        model = DecisionTreeClassifier(max_depth=max_depth, min_samples_leaf=min_samples_leaf, random_state=42)
-    elif model_name == "Clasificador Bayesiano Gausiano":
-        model = GaussianNB()
-    elif model_name == "Support Vector Machine (SVM)":
-        C_svm = st.sidebar.slider(f"SVM: Parámetro de Regularización (C) para {model_name}", min_value=0.1, max_value=10.0, value=1.0, step=0.1, key=f"{model_name}_C")
-        kernel_svm = st.sidebar.selectbox(f"SVM: Kernel para {model_name}", ("rbf", "linear", "poly", "sigmoid"), key=f"{model_name}_kernel")
-        model = SVC(C=C_svm, kernel=kernel_svm, random_state=42)
-    elif model_name == "Regresión Logística":
-        C_lr = st.sidebar.slider(f"Regresión Logística: Parámetro de Regularización (C) para {model_name}", min_value=0.1, max_value=10.0, value=1.0, step=0.1, key=f"{model_name}_C")
-        solver_lr = st.sidebar.selectbox(f"Regresión Logística: Solver para {model_name}", ("liblinear", "lbfgs", "sag", "saga"), key=f"{model_name}_solver")
-        model = LogisticRegression(C=C_lr, solver=solver_lr, max_iter=1000, random_state=42)
+    accuracy = accuracy_score(y_test, y_pred)
+    st.metric(label="Exactitud (Accuracy) del Modelo", value=f"{accuracy:.4f}")
 
-    if model:
-        st.write(f"Entrenando {model_name}...")
-        try:
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
-            accuracy = accuracy_score(y_test, y_pred)
-            report = classification_report(y_test, y_pred, output_dict=True)
+    st.markdown("#### Reporte de Clasificación")
+    report = classification_report(y_test, y_pred, output_dict=True)
+    report_df = pd.DataFrame(report).transpose()
+    st.dataframe(report_df)
 
-            st.write(f"### Resultados para {model_name}")
-            st.metric(label="Exactitud (Accuracy)", value=f"{accuracy:.4f}")
+    st.markdown("#### Matriz de Confusión")
+    fig_cm, ax_cm = plt.subplots(figsize=(6, 5))
+    cm_display = ConfusionMatrixDisplay.from_estimator(model, X_test, y_test, cmap=plt.cm.Blues, ax=ax_cm)
+    st.pyplot(fig_cm)
 
-            with st.expander(f"Ver Reporte de Clasificación para {model_name}"):
-                report_df = pd.DataFrame(report).transpose()
-                st.dataframe(report_df)
+    # --- Visualización del Árbol ---
+    st.markdown("---")
+    st.subheader("5. Visualización del Árbol de Decisión Final 🌳")
+    st.write("Aquí puedes ver la estructura del árbol de decisión que fue entrenado con tus datos y parámetros.")
 
-            with st.expander(f"Ver Matriz de Confusión para {model_name}"):
-                fig_cm, ax_cm = plt.subplots(figsize=(6, 5))
-                cm_display = ConfusionMatrixDisplay.from_estimator(model, X_test, y_test, cmap=plt.cm.Blues, ax=ax_cm)
-                st.pyplot(fig_cm)
+    # Ajustar tamaño de la figura para que el árbol se vea bien
+    fig_tree, ax_tree = plt.subplots(figsize=(25, 15)) # Aumentado el tamaño
+    plot_tree(
+        model,
+        filled=True,
+        feature_names=df.columns[:-1].tolist(),
+        class_names=[str(c) for c in sorted(df['Clase'].unique())], # Nombres de clase dinámicos
+        ax=ax_tree,
+        fontsize=10, # Ajustado el tamaño de la fuente
+        proportion=True, # Muestra la proporción de muestras en cada nodo
+        rounded=True # Bordes redondeados para mejor estética
+    )
+    plt.title("Estructura del Árbol de Decisión", fontsize=16)
+    st.pyplot(fig_tree)
 
-            if model_name == "Árbol de Decisión":
-                with st.expander("Ver Visualización del Árbol de Decisión"):
-                    fig_tree, ax_tree = plt.subplots(figsize=(20, 15))
-                    plot_tree(model, filled=True, feature_names=df.columns[:-1].tolist(), class_names=[str(c) for c in sorted(df['Clase'].unique())], ax=ax_tree, fontsize=8)
-                    st.pyplot(fig_tree)
-
-            metrics_results.append({
-                "Modelo": model_name,
-                "Exactitud": accuracy,
-                "Precisión (Macro Avg)": report['macro avg']['precision'],
-                "Recall (Macro Avg)": report['macro avg']['recall'],
-                "F1-Score (Macro Avg)": report['macro avg']['f1-score']
-            })
-        except Exception as e:
-            st.error(f"Error al entrenar {model_name}: {e}")
-
-# --- Comparación de Modelos ---
-st.markdown("---")
-st.subheader("4. Comparación de Modelos ✨")
-
-if metrics_results:
-    comparison_df = pd.DataFrame(metrics_results).set_index("Modelo")
-    st.dataframe(comparison_df.style.highlight_max(axis=0, color='lightgreen'))
-
-    st.markdown("#### Gráfico de Comparación de Exactitud")
-    fig_comp, ax_comp = plt.subplots(figsize=(10, 6))
-    sns.barplot(x=comparison_df.index, y="Exactitud", data=comparison_df, palette="viridis", ax=ax_comp)
-    plt.ylim(0, 1) # La exactitud va de 0 a 1
-    plt.title("Comparación de Exactitud de los Modelos")
-    plt.ylabel("Exactitud")
-    plt.xlabel("Modelo")
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    st.pyplot(fig_comp)
-else:
-    st.warning("Selecciona al menos un modelo para ver la comparación.")
+except Exception as e:
+    st.error(f"¡Ocurrió un error al entrenar el Árbol de Decisión! Por favor, revisa los parámetros y datos. Error: {e}")
 
 st.markdown("---")
-st.markdown("¡Gracias por usar esta aplicación interactiva de ML! Explora y aprende.")
+st.markdown("¡Experimenta con los parámetros del árbol de decisión en la barra lateral para ver cómo afectan la estructura y el desempeño!")
 
